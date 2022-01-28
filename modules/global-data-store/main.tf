@@ -3,12 +3,11 @@ provider "aws" {
     region  = var.secondary_region
 }
 
-
 // Primary cluster subnet config
 data "aws_subnet" "primary_subnets" {
     count   = length(var.availability_zones)
 
-    tags    = {
+    tags = {
       Name = "${var.primary_vpc_name}-private-${element(var.availability_zones, count.index)}"
     }
 }
@@ -64,29 +63,12 @@ data "aws_security_group" "secondary_security_groups" {
     name      = "${var.secondary_vpc_name}-${element(var.security_groups, count.index)}"
 }
 
-resource "aws_elasticache_parameter_group" "secondary_cache_parameter_group" {
-    provider = aws.secondary_region
-    name    = var.name
-    family  = var.parameter_group_name
-
-    parameter {
-      name  = "maxmemory-policy"
-      value = var.maxmemory_policy
-    }
-
-    parameter {
-      name  = "cluster-enabled"
-      value = var.cluster_mode ? "yes" : "no"
-    }
-}
-
 data "aws_sns_topic" "secondary_maintenance_sns_topic" {
     provider  = aws.secondary_region
     name = var.maintenance_sns_topic
 }
 
 // actual cluster config
-
 resource "aws_elasticache_global_replication_group" "globaldatastore" {
   global_replication_group_id_suffix = var.name
   primary_replication_group_id       = aws_elasticache_replication_group.primary_elasti_cache.id
@@ -106,6 +88,7 @@ resource "aws_elasticache_replication_group" "primary_elasti_cache" {
       }
     }
     
+    auth_token                    = var.auth_token ? var.auth_token : null
     number_cache_clusters         = var.cluster_mode ? null : var.replica_count
     engine                        = "redis"
     engine_version                = var.engine_version
@@ -133,6 +116,7 @@ resource "aws_elasticache_replication_group" "secondary_elasti_cache" {
     subnet_group_name             = aws_elasticache_subnet_group.secondary_cache_subnet_group.name
     security_group_ids            = flatten([data.aws_security_group.secondary_security_groups.*.id])
     automatic_failover_enabled    = true
+    auth_token                    = var.auth_token ? var.auth_token : null
     
     cluster_mode {
         replicas_per_node_group     = var.secondary_replica_count
